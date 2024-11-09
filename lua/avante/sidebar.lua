@@ -1050,7 +1050,7 @@ function Sidebar:update_content(content, opts)
       if not self.result or not self.result.bufnr or not api.nvim_buf_is_valid(self.result.bufnr) then return end
       Utils.unlock_buf(self.result.bufnr)
       if opts.backspace ~= nil and opts.backspace > 0 then delete_last_n_chars(self.result.bufnr, opts.backspace) end
-      scroll_to_bottom()
+      -- scroll_to_bottom()
       local lines = vim.split(content, "\n")
       api.nvim_buf_call(self.result.bufnr, function() api.nvim_put(lines, "c", true, true) end)
       Utils.lock_buf(self.result.bufnr)
@@ -1073,7 +1073,7 @@ function Sidebar:update_content(content, opts)
         end, function(err) return err end)
       end
 
-      if opts.scroll then Utils.buf_scroll_to_end(self.result.bufnr) end
+      -- if opts.scroll then Utils.buf_scroll_to_end(self.result.bufnr) end
 
       if opts.callback ~= nil then opts.callback() end
     end, 0)
