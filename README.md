@@ -8,9 +8,12 @@
     <img src="https://img.shields.io/static/v1?style=flat-square&label=Neovim&message=v0.10%2b&logo=neovim&labelColor=282828&logoColor=8faa80&color=414b32" alt="Neovim: v0.10+" />
   </a>
   <a href="https://github.com/yetone/avante.nvim/actions/workflows/ci.yaml" target="_blank">
-    <img src="https://img.shields.io/github/actions/workflow/status/yetone/avante.nvim/ci.yaml?style=flat-square&logo=github&logoColor=c7c7c7&label=CI&labelColor=282828&color=347D39&event=push" alt="CI status" />
+    <img src="https://img.shields.io/github/actions/workflow/status/yetone/avante.nvim/lua.yaml?style=flat-square&logo=lua&logoColor=c7c7c7&label=Lua+CI&labelColor=282828&color=347D39&event=push" alt="Lua CI status" />
   </a>
-  <a href="https://discordapp.com/channels/1302530866362323016" target="_blank">
+  <a href="https://github.com/yetone/avante.nvim/actions/workflows/ci.yaml" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/yetone/avante.nvim/rust.yaml?style=flat-square&logo=rust&logoColor=c7c7c7&label=Rust+CI&labelColor=282828&color=347D39&event=push" alt="Rust CI status" />
+  </a>
+  <a href="https://discord.com/invite/wUuZz7VxXD" target="_blank">
     <img src="https://img.shields.io/discord/1302530866362323016?style=flat-square&logo=discord&label=Discord&logoColor=ffffff&labelColor=7376CF&color=268165" alt="Discord" />
   </a>
   <a href="https://dotfyle.com/plugins/yetone/avante.nvim">
@@ -112,6 +115,7 @@ Plug 'zbirenbaum/copilot.lua'
 Plug 'yetone/avante.nvim', { 'branch': 'main', 'do': 'make' }
 autocmd! User avante.nvim lua << EOF
 require('avante_lib').load()
+require('avante').setup()
 EOF
 ```
 
@@ -208,12 +212,29 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
     temperature = 0,
     max_tokens = 4096,
   },
+  ---Specify the special dual_boost mode
+  ---1. enabled: Whether to enable dual_boost mode. Default to false.
+  ---2. first_provider: The first provider to generate response. Default to "openai".
+  ---3. second_provider: The second provider to generate response. Default to "claude".
+  ---4. prompt: The prompt to generate response based on the two reference outputs.
+  ---5. timeout: Timeout in milliseconds. Default to 60000.
+  ---How it works:
+  --- When dual_boost is enabled, avante will generate two responses from the first_provider and second_provider respectively. Then use the response from the first_provider as provider1_output and the response from the second_provider as provider2_output. Finally, avante will generate a response based on the prompt and the two reference outputs, with the default Provider as normal.
+  ---Note: This is an experimental feature and may not work as expected.
+  dual_boost = {
+    enabled = false,
+    first_provider = "openai",
+    second_provider = "claude",
+    prompt = "Based on the two reference outputs below, generate a response that incorporates elements from both but reflects your own judgment and unique perspective. Do not provide any explanation, just give the response directly. Reference Output 1: [{{provider1_output}}], Reference Output 2: [{{provider2_output}}]",
+    timeout = 60000, -- Timeout in milliseconds
+  },
   behaviour = {
     auto_suggestions = false, -- Experimental stage
     auto_set_highlight_group = true,
     auto_set_keymaps = true,
     auto_apply_diff_after_generation = false,
     support_paste_from_clipboard = false,
+    minimize_diff = true, -- Whether to remove unchanged lines when applying a code block
   },
   mappings = {
     --- @class AvanteConflictMappings
@@ -481,3 +502,14 @@ The high quality and ingenuity of these projects' source code have been immensel
 ## License
 
 avante.nvim is licensed under the Apache 2.0 License. For more details, please refer to the [LICENSE](./LICENSE) file.
+
+# Star History
+
+<p align="center">
+  <a target="_blank" href="https://star-history.com/#yetone/avante.nvim&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=yetone/avante.nvim&type=Date&theme=dark">
+      <img alt="NebulaGraph Data Intelligence Suite(ngdi)" src="https://api.star-history.com/svg?repos=yetone/avante.nvim&type=Date">
+    </picture>
+  </a>
+</p>

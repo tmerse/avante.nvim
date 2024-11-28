@@ -79,7 +79,7 @@ H.get_oauth_token = function()
 end
 
 H.chat_auth_url = "https://api.github.com/copilot_internal/v2/token"
-H.chat_completion_url = function(base_url) return Utils.trim(base_url, { prefix = "/" }) .. "/chat/completions" end
+H.chat_completion_url = function(base_url) return Utils.url_join(base_url, "/chat/completions") end
 
 ---@class AvanteProviderFunctor
 local M = {}
@@ -118,7 +118,7 @@ end
 ---@field github_token CopilotToken?
 M.state = nil
 
-M.api_key_name = P.AVANTE_INTERNAL_KEY
+M.api_key_name = ""
 M.tokenizer_id = "gpt-4o"
 M.role_map = {
   user = "user",

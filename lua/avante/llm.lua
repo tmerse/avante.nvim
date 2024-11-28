@@ -18,32 +18,12 @@ M.CANCEL_PATTERN = "AvanteLLMEscape"
 
 local group = api.nvim_create_augroup("avante_llm", { clear = true })
 
----@alias LlmMode "planning" | "editing" | "suggesting"
----
----@class TemplateOptions
----@field use_xml_format boolean
----@field ask boolean
----@field question string
----@field code_lang string
----@field file_content string
----@field selected_code string | nil
----@field project_context string | nil
----@field history_messages AvanteLLMMessage[]
----
----@class StreamOptions: TemplateOptions
----@field ask boolean
----@field bufnr integer
----@field instructions string
----@field mode LlmMode
----@field provider AvanteProviderFunctor | nil
----@field on_chunk AvanteChunkParser
----@field on_complete AvanteCompleteParser
-
 ---@param opts StreamOptions
-M.stream = function(opts)
+---@param Provider AvanteProviderFunctor
+M._stream = function(opts, Provider)
+  -- print opts
   local mode = opts.mode or "planning"
   ---@type AvanteProviderFunctor
-  local Provider = opts.provider or P[Config.provider]
   local _, body_opts = P.parse_config(Provider)
   local max_tokens = body_opts.max_tokens or 4096
 
@@ -74,6 +54,7 @@ M.stream = function(opts)
     file_content = opts.file_content,
     selected_code = opts.selected_code,
     project_context = opts.project_context,
+    diagnostics = opts.diagnostics,
   }
 
   local system_prompt = Path.prompts.render_mode(mode, template_opts)
@@ -84,6 +65,11 @@ M.stream = function(opts)
   if opts.project_context ~= nil and opts.project_context ~= "" and opts.project_context ~= "null" then
     local project_context = Path.prompts.render_file("_project.avanterules", template_opts)
     if project_context ~= "" then table.insert(messages, { role = "user", content = project_context }) end
+  end
+
+  if opts.diagnostics ~= nil and opts.diagnostics ~= "" and opts.diagnostics ~= "null" then
+    local diagnostics = Path.prompts.render_file("_diagnostics.avanterules", template_opts)
+    if diagnostics ~= "" then table.insert(messages, { role = "user", content = diagnostics }) end
   end
 
   local code_context = Path.prompts.render_file("_context.avanterules", template_opts)
@@ -115,9 +101,9 @@ M.stream = function(opts)
         break
       end
     end
-    if #history_messages > 0 and history_messages[1].role == "assistant" then table.remove(history_messages, 1) end
     -- prepend the history messages to the messages table
     vim.iter(history_messages):each(function(msg) table.insert(messages, 1, msg) end)
+    if #messages > 0 and messages[1].role == "assistant" then table.remove(messages, 1) end
   end
 
   ---@type AvantePromptOptions
@@ -126,7 +112,6 @@ M.stream = function(opts)
     messages = messages,
     image_paths = image_paths,
   }
-
   ---@type string
   local current_event_state = nil
 
@@ -217,7 +202,7 @@ M.stream = function(opts)
       active_job = nil
       completed = true
       cleanup()
-      opts.on_complete(nil)
+      opts.on_complete(err)
     end,
     callback = function(result)
       active_job = nil
@@ -263,6 +248,122 @@ M.stream = function(opts)
   })
 
   return active_job
+end
+
+local function _merge_response(first_response, second_response, opts, Provider)
+  local prompt = "\n" .. Config.dual_boost.prompt
+  prompt = prompt
+    :gsub("{{[%s]*provider1_output[%s]*}}", first_response)
+    :gsub("{{[%s]*provider2_output[%s]*}}", second_response)
+
+  prompt = prompt .. "\n"
+
+  -- append this reference prompt to the code_opts messages at last
+  opts.instructions = opts.instructions .. prompt
+
+  M._stream(opts, Provider)
+end
+
+local function _collector_process_responses(collector, opts, Provider)
+  if not collector[1] or not collector[2] then
+    Utils.error("One or both responses failed to complete")
+    return
+  end
+  _merge_response(collector[1], collector[2], opts, Provider)
+end
+
+local function _collector_add_response(collector, index, response, opts, Provider)
+  collector[index] = response
+  collector.count = collector.count + 1
+
+  if collector.count == 2 then
+    collector.timer:stop()
+    _collector_process_responses(collector, opts, Provider)
+  end
+end
+
+M._dual_boost_stream = function(opts, Provider, Provider1, Provider2)
+  Utils.debug("Starting Dual Boost Stream")
+
+  local collector = {
+    count = 0,
+    responses = {},
+    timer = uv.new_timer(),
+    timeout_ms = Config.dual_boost.timeout,
+  }
+
+  -- Setup timeout
+  collector.timer:start(
+    collector.timeout_ms,
+    0,
+    vim.schedule_wrap(function()
+      if collector.count < 2 then
+        Utils.warn("Dual boost stream timeout reached")
+        collector.timer:stop()
+        -- Process whatever responses we have
+        _collector_process_responses(collector, opts, Provider)
+      end
+    end)
+  )
+
+  -- Create options for both streams
+  local function create_stream_opts(index)
+    local response = ""
+    return vim.tbl_extend("force", opts, {
+      on_chunk = function(chunk)
+        if chunk then response = response .. chunk end
+      end,
+      on_complete = function(err)
+        if err then
+          Utils.error(string.format("Stream %d failed: %s", index, err))
+          return
+        end
+        Utils.debug(string.format("Response %d completed", index))
+        _collector_add_response(collector, index, response, opts, Provider)
+      end,
+    })
+  end
+
+  -- Start both streams
+  local success, err = xpcall(function()
+    M._stream(create_stream_opts(1), Provider1)
+    M._stream(create_stream_opts(2), Provider2)
+  end, function(err) return err end)
+  if not success then Utils.error("Failed to start dual_boost streams: " .. tostring(err)) end
+end
+
+---@alias LlmMode "planning" | "editing" | "suggesting"
+---
+---@class TemplateOptions
+---@field use_xml_format boolean
+---@field ask boolean
+---@field question string
+---@field code_lang string
+---@field file_content string
+---@field selected_code string | nil
+---@field project_context string | nil
+---@field diagnostics string | nil
+---@field history_messages AvanteLLMMessage[]
+---
+---@class StreamOptions: TemplateOptions
+---@field ask boolean
+---@field bufnr integer
+---@field instructions string
+---@field mode LlmMode
+---@field provider AvanteProviderFunctor | nil
+---@field on_chunk AvanteChunkParser
+---@field on_complete AvanteCompleteParser
+
+---@param opts StreamOptions
+M.stream = function(opts)
+  if opts.on_chunk ~= nil then opts.on_chunk = vim.schedule_wrap(opts.on_chunk) end
+  if opts.on_complete ~= nil then opts.on_complete = vim.schedule_wrap(opts.on_complete) end
+  local Provider = opts.provider or P[Config.provider]
+  if Config.dual_boost.enabled then
+    M._dual_boost_stream(opts, Provider, P[Config.dual_boost.first_provider], P[Config.dual_boost.second_provider])
+  else
+    M._stream(opts, Provider)
+  end
 end
 
 function M.cancel_inflight_request() api.nvim_exec_autocmds("User", { pattern = M.CANCEL_PATTERN }) end
